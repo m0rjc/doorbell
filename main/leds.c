@@ -7,7 +7,7 @@
 
 #include "leds.h"
 
-void lightBlueLed() {
+void initBlueLed() {
     gpio_config_t ioConfig = {
         .pin_bit_mask = GPIO_SEL_2,
         .mode = GPIO_MODE_OUTPUT,
@@ -16,7 +16,8 @@ void lightBlueLed() {
         .intr_type = GPIO_INTR_DISABLE
     };
     ESP_ERROR_CHECK(gpio_config(&ioConfig));
+}
 
-    printf("Blue LED on\n");
-    gpio_set_level(GPIO_NUM_2, 1);
+void setBlueLed(uint32_t state) {
+   gpio_set_level(GPIO_NUM_2, state);
 }

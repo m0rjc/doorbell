@@ -11,14 +11,14 @@ const char* TAG = "mainQueue.c";
  * @brief Set up the main event queue.
  */
 QueueHandle_t main_queue_init(){
-    QueueHandle_t queue;
+    QueueHandle_t queue = NULL;
 
-    for(int queueSize = QUEUE_SIZE; main_queue == NULL && queueSize > 0; queueSize--) {
+    for(int queueSize = QUEUE_SIZE; queue == NULL && queueSize > 0; queueSize--) {
         queue = xQueueCreate(queueSize, sizeof(main_queue_event_t));
     }
 
     if(queue == NULL) {
-        ESP_LOG_E(TAG, "Failed to create main queue");
+        ESP_LOGE(TAG, "Failed to create main queue");
         abort();
     }
 
