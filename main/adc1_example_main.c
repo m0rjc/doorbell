@@ -13,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
+#include "esp_wifi.h"
 
 #include "leds.h"
 #include "sleep.h"
@@ -43,6 +44,7 @@ static void demo_task(void *pvParameter) {
         if(canSend && leftToSend > 0) {
             leftToSend--;
             canSend = 0;
+            broadcast_beacon_send();
             broadcast_send(MESSAGE, strlen(MESSAGE) + 1);
         }
 
@@ -50,7 +52,9 @@ static void demo_task(void *pvParameter) {
         if(readResult == pdTRUE) {
             switch(evt.id) {
                 case EVENT_TYPE_BEACON_TX_FINISHED:
-                    printf("TX finished\n");
+                    printf("TX finished "MACSTR" status=%s\n", 
+                        MAC2STR(evt.info.tx_finished.mac_addr),
+                        (evt.info.tx_finished.status == ESP_NOW_SEND_SUCCESS ? "OK" : "FAIL"));
                     canSend = 1;
                     break;
                 case EVENT_TYPE_BEACON_RECEIVED:

@@ -21,8 +21,10 @@
 
 #define ESPNOW_MAXDELAY 512
 #define PACKET_SIZE ESP_NOW_MAX_DATA_LEN
+#define MAX_PEERS 10
 
 static const char *TAG = "broadcast.c";
+
 static uint8_t s_example_broadcast_mac[ESP_NOW_ETH_ALEN] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
 static QueueHandle_t main_queue;
@@ -30,7 +32,7 @@ static QueueHandle_t main_queue;
 const char *MAGIC = "M0RJC";
 
 typedef enum {
-    PACKET_TYPE_BROADCAST,
+    PACKET_TYPE_BEACON,
     PACKET_TYPE_PAYLOAD
 } packet_type_t;
 
@@ -41,6 +43,19 @@ typedef struct {
     uint16_t crc;
     uint8_t payload[0];
 } on_air_packet_t;
+
+typedef struct {
+    char filler[20];
+} beacon_payload_t;
+
+static beacon_payload_t s_my_beacon_payload;
+
+typedef struct {
+    uint8_t mac_addr[ESP_NOW_ETH_ALEN];
+} peer_info_t;
+
+static peer_info_t peers[MAX_PEERS];
+static int peerCount = 0;
 
 static void initialiseNVS() {
     esp_err_t ret = nvs_flash_init();
@@ -90,13 +105,61 @@ static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status
 
     if (mac_addr == NULL) {
         ESP_LOGE(TAG, "Send cb arg error");
-    } 
+    }
 
     event.id = EVENT_TYPE_BEACON_TX_FINISHED;
     memcpy(eventPayload->mac_addr, mac_addr, ESP_NOW_ETH_ALEN);
     eventPayload->status = status;
     if (xQueueSend(main_queue, &event, ESPNOW_MAXDELAY) != pdTRUE) {
         ESP_LOGW(TAG, "Send send queue fail");
+    }
+}
+
+
+void onReceivedPayload(on_air_packet_t *packet) {
+    main_queue_event_t event;
+    main_queue_event_beacon_received_t *eventPayload = &event.info.beacon_received;
+
+    event.id = EVENT_TYPE_BEACON_RECEIVED;
+    eventPayload->data = malloc(packet->len);
+    eventPayload->length = packet->len;
+    memcpy(eventPayload->data, packet->payload, packet->len);
+    if (xQueueSend(main_queue, &event, ESPNOW_MAXDELAY) != pdTRUE) {
+        ESP_LOGW(TAG, "Send queue fail for receive event");
+        free(eventPayload->data);
+    }
+}
+
+bool hasPeer(const uint8_t *mac_addr) {
+    for(int i = 0; i < peerCount; i++) {
+        if(memcmp(peers[i].mac_addr, mac_addr, ESP_NOW_ETH_ALEN) == 0) return true;
+    }
+    return false;
+}
+
+void onReceivedBeacon(const uint8_t *mac_addr, on_air_packet_t *packet) {
+    if (esp_now_is_peer_exist(mac_addr) == true && !hasPeer(mac_addr)) {
+        ESP_LOGW(TAG, "ESP Peers must be persistent");
+        if(peerCount < MAX_PEERS) {
+            memcpy(peers[peerCount++].mac_addr, mac_addr, ESP_NOW_ETH_ALEN);
+        }
+    }
+    if (esp_now_is_peer_exist(mac_addr) == false && peerCount < MAX_PEERS) {
+        esp_now_peer_info_t *peer = malloc(sizeof(esp_now_peer_info_t));
+        if (peer == NULL) {
+            ESP_LOGE(TAG, "Malloc peer information fail. Beacon dropped.");
+            return;
+        }
+        memset(peer, 0, sizeof(esp_now_peer_info_t));
+        peer->channel = CONFIG_ESPNOW_CHANNEL;
+        peer->ifidx = WIFI_IF_STA;
+        peer->encrypt = false;
+        memcpy(peer->lmk, CONFIG_ESPNOW_LMK, ESP_NOW_KEY_LEN);
+        memcpy(peer->peer_addr, mac_addr, ESP_NOW_ETH_ALEN);
+        ESP_ERROR_CHECK( esp_now_add_peer(peer) );
+        free(peer);
+        memcpy(peers[peerCount++].mac_addr, mac_addr, ESP_NOW_ETH_ALEN);
+        ESP_LOGI(TAG, "Registered peer %d "MACSTR, peerCount, MAC2STR(mac_addr));
     }
 }
 
@@ -109,8 +172,6 @@ static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status
  */
 static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len)
 {
-    main_queue_event_t event;
-    main_queue_event_beacon_received_t *eventPayload = &event.info.beacon_received;
     uint16_t receivedCrc;
 
     if (mac_addr == NULL || data == NULL || len <= 0) {
@@ -139,13 +200,13 @@ static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len
         return;
     }
 
-    event.id = EVENT_TYPE_BEACON_RECEIVED;
-    eventPayload->data = malloc(packet->len);
-    eventPayload->length = packet->len;
-    memcpy(eventPayload->data, packet->payload, packet->len);
-    if (xQueueSend(main_queue, &event, ESPNOW_MAXDELAY) != pdTRUE) {
-        ESP_LOGW(TAG, "Send queue fail for receive event");
-        free(eventPayload->data);
+    switch(packet->type) {
+        case PACKET_TYPE_PAYLOAD:
+            onReceivedPayload(packet);
+            break;
+        case PACKET_TYPE_BEACON:
+            onReceivedBeacon(mac_addr, packet);
+            break;
     }
 }
 
@@ -172,6 +233,7 @@ static void espnow_init() {
     ESP_ERROR_CHECK( esp_now_add_peer(peer) );
     free(peer);
 
+    strcpy(s_my_beacon_payload.filler, "M0RJC");
 }
 
 void broadcast_init(QueueHandle_t queue) {
@@ -219,7 +281,13 @@ static void send(const uint8_t *macAddr, const packet_type_t packetType, const v
  * @param length length of this data.
  */
 void broadcast_send(const void *data, const int length) {
-    send(s_example_broadcast_mac, PACKET_TYPE_BROADCAST, data, length);
+    for(int i = 0; i < peerCount; i++) {
+        send(peers[i].mac_addr, PACKET_TYPE_PAYLOAD, data, length);
+    }
+}
+
+void broadcast_beacon_send() {
+    send(s_example_broadcast_mac, PACKET_TYPE_BEACON, &s_my_beacon_payload, sizeof(beacon_payload_t));
 }
 
 void broadcast_teardown() {
