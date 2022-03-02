@@ -1,17 +1,24 @@
 #pragma once
 
+#include "freertos/event_groups.h"
 #include "freertos/queue.h"
 #include "esp_now.h"
 
-typedef enum {
-    EVENT_TYPE_BEACON_RECEIVED,
-    EVENT_TYPE_BEACON_TX_FINISHED
-} main_queue_event_id_t;
+extern QueueHandle_t main_queue;
+extern EventGroupHandle_t main_event_group;
 
-typedef struct {
-    esp_now_send_status_t status;
-    uint8_t mac_addr[ESP_NOW_ETH_ALEN];
-} main_queue_event_beacon_tx_finished_t;
+/* The event group allows multiple bits for each event, but we only care about two events:
+ * - we are connected to the AP with an IP
+ * - we failed to connect after the maximum amount of retries */
+#define WIFI_CONNECTED_BIT BIT0
+#define HEARTBEAT_SEND_BIT BIT1
+#define WIFI_RECONNECT_REQUEST_BIT BIT2
+
+typedef enum {
+    EVENT_TYPE_NETWORK_UP,
+    EVENT_TYPE_NETWORK_DOWN,
+    EVENT_TYPE_BEACON_RECEIVED,
+} main_queue_event_id_t;
 
 typedef struct {
     void *data;
@@ -20,7 +27,6 @@ typedef struct {
 
 typedef union {
     main_queue_event_beacon_received_t beacon_received;
-    main_queue_event_beacon_tx_finished_t tx_finished;
 } main_queue_event_info_t;
 
 typedef struct {
@@ -31,9 +37,5 @@ typedef struct {
 /**
  * @brief Set up the main event queue.
  */
-QueueHandle_t main_queue_init();
+void main_queue_init();
 
-/**
- * @brief Close down the main event queue.
- */
-void main_queue_teardown(QueueSetHandle_t queue);
