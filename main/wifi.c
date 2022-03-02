@@ -56,9 +56,6 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 void wifi_keepalive_task(void *pvParameter) {
     while(true) {
         int delay = KEEPALIVE_INITIAL_DELAY_MS;
-        if(xEventGroupGetBits(main_event_group) & WIFI_CONNECTED_BIT) {
-            xEventGroupSetBits(main_event_group, HEARTBEAT_SEND_BIT);
-        }
         EventBits_t bits = xEventGroupWaitBits(main_event_group, WIFI_RECONNECT_REQUEST_BIT, pdTRUE, pdTRUE, pdMS_TO_TICKS(HEARTBEAT_INTERVAL_MS));
         // Do nothing if just a timeout.
         while((bits & WIFI_RECONNECT_REQUEST_BIT) != 0) {

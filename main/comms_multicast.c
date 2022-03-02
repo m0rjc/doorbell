@@ -16,13 +16,15 @@
 #include <lwip/netdb.h>
 
 #include "mainQueue.h"
-#include "multicast.h"
+#include "comms_multicast.h"
+#include "comms.h"
 
 #define UDP_PORT 3333
 #define MULTICAST_TTL 2
 #define MULTICAST_IPV4_ADDR  "232.10.11.12"
 
 static const char *TAG = "multicast";
+static int sock = -1;
 
 static int socket_add_ipv4_multicast_group(int sock, bool assign_source_if)
 {
@@ -111,13 +113,50 @@ static int create_multicast_ipv4_socket(void)
 
 err:
     close(sock);
+    sock = -1;
     return -1;
 }
 
+static int mcast_send(const void *buffer, int len) {
+    if(sock < 0) return -1;
 
-void mcast_example_task(void *pvParameters)
+    struct addrinfo hints = {
+        .ai_flags = AI_PASSIVE,
+        .ai_socktype = SOCK_DGRAM,
+    };
+    struct addrinfo *res;
+
+    char addrbuf[32] = { 0 };
+
+    hints.ai_family = AF_INET; // For an IPv4 socket
+    int err = getaddrinfo(MULTICAST_IPV4_ADDR,
+                            NULL,
+                            &hints,
+                            &res);
+    if (err < 0) {
+        ESP_LOGE(TAG, "getaddrinfo() failed for IPV4 destination address. error: %d", err);
+        return -1;
+    }
+    if (res == 0) {
+        ESP_LOGE(TAG, "getaddrinfo() did not return any addresses");
+        return -1;
+    }
+
+    ((struct sockaddr_in *)res->ai_addr)->sin_port = htons(UDP_PORT);
+    inet_ntoa_r(((struct sockaddr_in *)res->ai_addr)->sin_addr, addrbuf, sizeof(addrbuf)-1);
+    ESP_LOGI(TAG, "Sending to IPV4 multicast address %s:%d...",  addrbuf, UDP_PORT);
+
+    err = sendto(sock, buffer, len, 0, res->ai_addr, res->ai_addrlen);
+    freeaddrinfo(res);
+    if (err < 0) {
+        ESP_LOGE(TAG, "IPV4 sendto failed. errno: %d", errno);
+        return -1;
+    }
+    return 0;
+}
+
+static void mcast_listening_task(void *pvParameters)
 {
-
     while (1) {
     EventBits_t eventBits;
         do {
@@ -125,8 +164,6 @@ void mcast_example_task(void *pvParameters)
             eventBits = xEventGroupWaitBits(main_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(10000));
         } while ( (eventBits & WIFI_CONNECTED_BIT) == 0);
         ESP_LOGI(TAG, "Starting");
-
-        int sock;
 
         sock = create_multicast_ipv4_socket();
         if (sock < 0) {
@@ -152,7 +189,7 @@ void mcast_example_task(void *pvParameters)
         int err = 1;
         while (err > 0) {
             struct timeval tv = {
-                .tv_sec = 2,
+                .tv_sec = 30,
                 .tv_usec = 0,
             };
             fd_set rfds;
@@ -168,12 +205,12 @@ void mcast_example_task(void *pvParameters)
             else if (s > 0) {
                 if (FD_ISSET(sock, &rfds)) {
                     // Incoming datagram received
-                    char recvbuf[48];
+                    packet_t packet;
                     char raddr_name[32] = { 0 };
 
                     struct sockaddr_storage raddr; // Large enough for both IPv4 or IPv6
                     socklen_t socklen = sizeof(raddr);
-                    int len = recvfrom(sock, recvbuf, sizeof(recvbuf)-1, 0,
+                    int len = recvfrom(sock, &packet, sizeof(packet_t), 0,
                                        (struct sockaddr *)&raddr, &socklen);
                     if (len < 0) {
                         ESP_LOGE(TAG, "multicast recvfrom failed: errno %d", errno);
@@ -187,55 +224,7 @@ void mcast_example_task(void *pvParameters)
                                     raddr_name, sizeof(raddr_name)-1);
                     }
                     ESP_LOGI(TAG, "received %d bytes from %s:", len, raddr_name);
-
-                    recvbuf[len] = 0; // Null-terminate whatever we received and treat like a string...
-                    ESP_LOGI(TAG, "%s", recvbuf);
-                }
-            }
-            else if (xEventGroupClearBits(main_event_group, HEARTBEAT_SEND_BIT) & HEARTBEAT_SEND_BIT) { // s == 0
-                // Timeout passed with no incoming data, so send something!
-
-                static int send_count;
-                const char sendfmt[] = "Multicast #%d sent by ESP32\n";
-                char sendbuf[48];
-                char addrbuf[32] = { 0 };
-                int len = snprintf(sendbuf, sizeof(sendbuf), sendfmt, send_count++);
-                if (len > sizeof(sendbuf)) {
-                    ESP_LOGE(TAG, "Overflowed multicast sendfmt buffer!!");
-                    send_count = 0;
-                    err = -1;
-                    break;
-                }
-
-                struct addrinfo hints = {
-                    .ai_flags = AI_PASSIVE,
-                    .ai_socktype = SOCK_DGRAM,
-                };
-                struct addrinfo *res;
-
-                hints.ai_family = AF_INET; // For an IPv4 socket
-                int err = getaddrinfo(MULTICAST_IPV4_ADDR,
-                                      NULL,
-                                      &hints,
-                                      &res);
-                if (err < 0) {
-                    ESP_LOGE(TAG, "getaddrinfo() failed for IPV4 destination address. error: %d", err);
-                    break;
-                }
-                if (res == 0) {
-                    ESP_LOGE(TAG, "getaddrinfo() did not return any addresses");
-                    break;
-                }
-
-                ((struct sockaddr_in *)res->ai_addr)->sin_port = htons(UDP_PORT);
-                inet_ntoa_r(((struct sockaddr_in *)res->ai_addr)->sin_addr, addrbuf, sizeof(addrbuf)-1);
-                ESP_LOGI(TAG, "Sending to IPV4 multicast address %s:%d...",  addrbuf, UDP_PORT);
-
-                err = sendto(sock, sendbuf, len, 0, res->ai_addr, res->ai_addrlen);
-                freeaddrinfo(res);
-                if (err < 0) {
-                    ESP_LOGE(TAG, "IPV4 sendto failed. errno: %d", errno);
-                    break;
+                    comms_on_packet(&packet, len);
                 }
             }
         }
@@ -243,6 +232,11 @@ void mcast_example_task(void *pvParameters)
         ESP_LOGE(TAG, "Shutting down socket");
         shutdown(sock, 0);
         close(sock);
+        sock = -1;
     }
+}
 
+void comms_multicast_init() {
+    comms_send_callback = mcast_send;
+    xTaskCreate(mcast_listening_task, "Multicast Listening Task", 4096, NULL, 4, NULL);
 }

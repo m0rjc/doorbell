@@ -15,18 +15,30 @@ extern EventGroupHandle_t main_event_group;
 #define WIFI_RECONNECT_REQUEST_BIT BIT2
 
 typedef enum {
-    EVENT_TYPE_NETWORK_UP,
-    EVENT_TYPE_NETWORK_DOWN,
-    EVENT_TYPE_BEACON_RECEIVED,
+    EVENT_TYPE_NETWORK_CHANGE,
+    EVENT_TYPE_PEER_COUNT_CHANGE,
+    EVENT_TYPE_ACKNOWLEDGE_COUNT_CHANGE
 } main_queue_event_id_t;
 
 typedef struct {
-    void *data;
-    int length;
-} main_queue_event_beacon_received_t;
+    bool is_network_up;
+} main_queue_event_network_change_t;
+
+typedef struct {
+    int peers;
+    int peers_with_button;
+    int peers_with_ringer;
+} main_queue_event_peer_count_change_t;
+
+typedef struct {
+    int ringers_ackowledged;
+    int peers_with_ringer;
+} main_queue_event_acknowledge_count_t;
 
 typedef union {
-    main_queue_event_beacon_received_t beacon_received;
+    main_queue_event_network_change_t network_change;
+    main_queue_event_peer_count_change_t peer_change;
+    main_queue_event_acknowledge_count_t acknowledge_change;
 } main_queue_event_info_t;
 
 typedef struct {

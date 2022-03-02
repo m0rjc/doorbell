@@ -20,7 +20,8 @@
 #include "sleep.h"
 #include "mainQueue.h"
 #include "wifi.h"
-#include "multicast.h"
+#include "comms.h"
+#include "comms_multicast.h"
 
 
 void app_main(void)
@@ -30,7 +31,8 @@ void app_main(void)
     wifi_init_sta();
     initBlueLed();
 
-    xTaskCreate(mcast_example_task, "Demo Task", 4096, NULL, 4, NULL);
+    comms_init(0);
+    comms_multicast_init();
 
     // vTaskDelay(100);
     // startSleep();
