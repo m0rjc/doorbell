@@ -47,8 +47,10 @@ typedef struct {
 
 typedef struct {
     int peers;
+    int max_peers;
     int peers_with_button;
     int peers_with_ringer;
+    uint64_t most_recent_seen_time;
     int ringers_acknowledged_last_ring;
     ring_event_number_t current_ring_number;
 } comms_status_summary_t;

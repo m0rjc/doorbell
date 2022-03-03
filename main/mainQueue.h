@@ -11,8 +11,7 @@ extern EventGroupHandle_t main_event_group;
  * - we are connected to the AP with an IP
  * - we failed to connect after the maximum amount of retries */
 #define WIFI_CONNECTED_BIT BIT0
-#define HEARTBEAT_SEND_BIT BIT1
-#define WIFI_RECONNECT_REQUEST_BIT BIT2
+#define WIFI_RECONNECT_REQUEST_BIT BIT1
 
 typedef enum {
     EVENT_TYPE_NETWORK_CHANGE,
@@ -25,6 +24,7 @@ typedef struct {
 } main_queue_event_network_change_t;
 
 typedef struct {
+    int max_peers;
     int peers;
     int peers_with_button;
     int peers_with_ringer;
