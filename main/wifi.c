@@ -34,7 +34,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-                    ESP_LOGI(TAG, "WIFI_EVENT_STA_DISCONNECTED");
+                    ESP_LOGD(TAG, "WIFI_EVENT_STA_DISCONNECTED");
 
         xEventGroupClearBits(main_event_group, WIFI_CONNECTED_BIT);
         xEventGroupSetBits(main_event_group, WIFI_RECONNECT_REQUEST_BIT);
@@ -64,11 +64,11 @@ void wifi_keepalive_task(void *pvParameter) {
         EventBits_t bits = xEventGroupWaitBits(main_event_group, WIFI_RECONNECT_REQUEST_BIT, pdTRUE, pdTRUE, pdMS_TO_TICKS(HEARTBEAT_INTERVAL_MS));
         // Do nothing if just a timeout.
         while((bits & WIFI_RECONNECT_REQUEST_BIT) != 0) {
-            ESP_LOGI(TAG, "Keepalive reconnect triggered. Waiting %d milliseconds", delay);
+            ESP_LOGD(TAG, "Keepalive reconnect triggered. Waiting %d milliseconds", delay);
             vTaskDelay(pdMS_TO_TICKS(delay));
             delay *= KEEPALIVE_BACKOFF_RATE;
             if(delay > KEEPALIVE_MAX_BACKOFF_MS) delay = KEEPALIVE_MAX_BACKOFF_MS;
-            ESP_LOGI(TAG, "Keepalive reconnect calling esp_wifi_connect");
+            ESP_LOGD(TAG, "Keepalive reconnect calling esp_wifi_connect");
             esp_wifi_connect();
             
             // Give it up to 10s to connect.
@@ -121,6 +121,6 @@ void wifi_init_sta(void)
 
     ESP_ERROR_CHECK(esp_wifi_start() );
 
-    ESP_LOGI(TAG, "wifi_init_sta finished.");
+    ESP_LOGD(TAG, "wifi_init_sta finished.");
 }
 

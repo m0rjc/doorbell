@@ -144,7 +144,7 @@ static int mcast_send(const void *buffer, int len) {
 
     ((struct sockaddr_in *)res->ai_addr)->sin_port = htons(UDP_PORT);
     inet_ntoa_r(((struct sockaddr_in *)res->ai_addr)->sin_addr, addrbuf, sizeof(addrbuf)-1);
-    ESP_LOGI(TAG, "Sending to IPV4 multicast address %s:%d...",  addrbuf, UDP_PORT);
+    ESP_LOGD(TAG, "Sending to IPV4 multicast address %s:%d...",  addrbuf, UDP_PORT);
 
     err = sendto(sock, buffer, len, 0, res->ai_addr, res->ai_addrlen);
     freeaddrinfo(res);
@@ -160,10 +160,10 @@ static void mcast_listening_task(void *pvParameters)
     while (1) {
     EventBits_t eventBits;
         do {
-            ESP_LOGI(TAG, "Waiting for WiFi Up");
+            ESP_LOGD(TAG, "Waiting for WiFi Up");
             eventBits = xEventGroupWaitBits(main_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(10000));
         } while ( (eventBits & WIFI_CONNECTED_BIT) == 0);
-        ESP_LOGI(TAG, "Starting");
+        ESP_LOGD(TAG, "Starting");
 
         sock = create_multicast_ipv4_socket();
         if (sock < 0) {
@@ -223,13 +223,13 @@ static void mcast_listening_task(void *pvParameters)
                         inet_ntoa_r(((struct sockaddr_in *)&raddr)->sin_addr,
                                     raddr_name, sizeof(raddr_name)-1);
                     }
-                    ESP_LOGI(TAG, "received %d bytes from %s:", len, raddr_name);
+                    ESP_LOGD(TAG, "received %d bytes from %s:", len, raddr_name);
                     comms_on_packet(&packet, len);
                 }
             }
         }
 
-        ESP_LOGE(TAG, "Shutting down socket");
+        ESP_LOGD(TAG, "Shutting down socket");
         shutdown(sock, 0);
         close(sock);
         sock = -1;

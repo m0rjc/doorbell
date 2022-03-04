@@ -1,7 +1,7 @@
 #pragma once
 
-#define NODE_FLAG_HAS_BUTTON BIT0
-#define NODE_FLAG_HAS_RINGER BIT1
+#define NODE_FLAG_HAS_BUTTON 1
+#define NODE_FLAG_HAS_RINGER 2
 
 #define NODE_ID_LEN 8
 
@@ -44,18 +44,6 @@ typedef struct {
     packet_type_id_t id;
     packet_info_t info;
 } packet_t;
-
-typedef struct {
-    int peers;
-    int max_peers;
-    int peers_with_button;
-    int peers_with_ringer;
-    uint64_t most_recent_seen_time;
-    int ringers_acknowledged_last_ring;
-    ring_event_number_t current_ring_number;
-} comms_status_summary_t;
-
-extern comms_status_summary_t comms_status_summary;
 
 typedef int send_broadcast_function_t(const void *buffer, int length);
 

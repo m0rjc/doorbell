@@ -24,6 +24,7 @@
 #include "comms.h"
 #include "comms_multicast.h"
 #include "nvs.h"
+#include "peers.h"
 
 static const char *TAG = "main.c";
 
@@ -62,6 +63,7 @@ void app_main(void)
     wifi_init_sta();
     initBlueLed();
 
+    peers_init();
     comms_init(0);
     comms_multicast_init();
 
