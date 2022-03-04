@@ -20,14 +20,12 @@
 
 #define MAX_PEERS 10
 
-#define HEARTBEAT_INTERVAL_MS 10000
-#define KEEPALIVE_LIFE_MS 60000
-#define PEER_SEMAPHORE_BLOCK_TIME 1000
-#define QUEUE_SEND_BLOCK_TICKS pdMS_TO_TICKS(500)
+#define HEARTBEAT_INTERVAL_MS 5000
+#define KEEPALIVE_LIFE_MS 20000
+#define PEER_SEMAPHORE_BLOCK_TIME 500
 
 static const char *TAG = "comms.c";
 static const char PACKET_MAGIC_NUMBER[] = {0xD0, 0x00, 0xBE, 0x11};
-
 
 typedef struct  {
     bool is_active;

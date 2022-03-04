@@ -27,14 +27,6 @@ static const char *TAG = "wifi.c";
 static esp_event_handler_instance_t instance_any_id;
 static esp_event_handler_instance_t instance_got_ip;
 
-static void initialiseNVS() {
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK( nvs_flash_erase() );
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK( ret );
-}
 
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
@@ -44,12 +36,25 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
                     ESP_LOGI(TAG, "WIFI_EVENT_STA_DISCONNECTED");
 
-            xEventGroupClearBits(main_event_group, WIFI_CONNECTED_BIT);
-            xEventGroupSetBits(main_event_group, WIFI_RECONNECT_REQUEST_BIT);
+        xEventGroupClearBits(main_event_group, WIFI_CONNECTED_BIT);
+        xEventGroupSetBits(main_event_group, WIFI_RECONNECT_REQUEST_BIT);
+
+        main_queue_event_t mqe = {
+            .id = EVENT_TYPE_NETWORK_CHANGE,
+            .info.network_change.is_network_up = false
+        };
+        xQueueSend(main_queue, &mqe, QUEUE_SEND_BLOCK_TICKS);
+
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
         xEventGroupSetBits(main_event_group, WIFI_CONNECTED_BIT);
+
+        main_queue_event_t mqe = {
+            .id = EVENT_TYPE_NETWORK_CHANGE,
+            .info.network_change.is_network_up = true
+        };
+        xQueueSend(main_queue, &mqe, QUEUE_SEND_BLOCK_TICKS);
     }
 }
 
@@ -81,10 +86,6 @@ void wifi_init_sta(void)
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_err_t ret = esp_wifi_init(&cfg);
-    if(ret == ESP_ERR_NVS_NOT_INITIALIZED) {
-        initialiseNVS();
-        ret = esp_wifi_init(&cfg);
-    }
     ESP_ERROR_CHECK(ret);
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,

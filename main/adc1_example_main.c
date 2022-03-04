@@ -23,6 +23,7 @@
 #include "wifi.h"
 #include "comms.h"
 #include "comms_multicast.h"
+#include "nvs.h"
 
 static const char *TAG = "main.c";
 
@@ -56,6 +57,7 @@ void main_loop_task(void *pvParameter) {
 void app_main(void)
 {
     esp_timer_early_init();
+    initialise_nvs();
     main_queue_init();
     wifi_init_sta();
     initBlueLed();
@@ -63,10 +65,14 @@ void app_main(void)
     comms_init(0);
     comms_multicast_init();
 
+    int32_t test_count = 0;
+    esp_err_t err = nvs_get_i32(m0rjc_nvs_handle, "test_counter", &test_count);
+    if(err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_ERROR_CHECK(err);
+    }
+    ESP_LOGI(TAG, "Test counter = %d", test_count);
+    test_count++;
+    nvs_set_i32(m0rjc_nvs_handle, "test_counter", test_count);
+
     xTaskCreate(main_loop_task, "Main Event Loop", 2048, NULL, 5, NULL);
-
-    vTaskStartScheduler();
-
-    // vTaskDelay(100);
-    // startSleep();
 }
