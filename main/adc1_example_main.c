@@ -25,6 +25,7 @@
 #include "comms_multicast.h"
 #include "nvs.h"
 #include "peers.h"
+#include "webui.h"
 
 static const char *TAG = "main.c";
 
@@ -36,6 +37,11 @@ void main_loop_task(void *pvParameter) {
                 case EVENT_TYPE_NETWORK_CHANGE:
                     ESP_LOGI(TAG, "Network change: %s", 
                         event.info.network_change.is_network_up ? "UP" : "DOWN");
+                    if(event.info.network_change.is_network_up) {
+                        webui_start();
+                    } else {
+                        webui_stop();
+                    }
                     break;
                 case EVENT_TYPE_PEER_COUNT_CHANGE:
                     ESP_LOGI(TAG, "Peer change: %d peers (%d max), %d buttons, %d ringers",
