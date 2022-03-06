@@ -108,21 +108,19 @@ esp_err_t config_post_handler(httpd_req_t *req)
     sb_append(buffer, "\n\n");
 
     form_parameter_t parameters[3];
-    int found_parameters = split_parameters(content, parameters, 3);
-    if(found_parameters != 3) {
-        httpd_resp_send_err(req, 413, "Wrong number of parameters");
+    int found_parameters = read_form_parameters(content, parameters, 3);
+    if(found_parameters > 3) {
+        httpd_resp_send_err(req, 413, "Too many parameters");
         return ESP_FAIL;
     }
     
-    for(int i = 0; i < 3; i++) {
-        char decoded[100];
-        decode_url_encoded(decoded, parameters[i].value, sizeof(decoded));
-        decoded[99] = 0;
+    for(int i = 0; i < found_parameters; i++) {
         sb_append(buffer, parameters[i].key);
         sb_append(buffer, " => ");
-        sb_append(buffer, decoded);
+        sb_append(buffer, parameters[i].value);
         sb_append(buffer, "\n");
     }
+    
     /* Send a simple response */
     httpd_resp_set_hdr(req, HDR_CONTENT_TYPE, "text/plain");
     httpd_resp_send(req, buffer->buffer, HTTPD_RESP_USE_STRLEN);

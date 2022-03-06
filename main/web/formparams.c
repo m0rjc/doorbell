@@ -15,75 +15,55 @@
  * @param max_parameters number of entries in the result buffer
  * @return int the number of parameters found. Will be max_parameters+1 if more were found.
  */
-int split_parameters(char *input, form_parameter_t *result, int max_parameters) {
-    memset(result, 0, max_parameters * sizeof(form_parameter_t));
+int read_form_parameters(char *input, form_parameter_t *result, int max_parameters) {
     result[0].key = input;
+    result[0].value = NULL;
     int current_index = 0;
 
-    for(char *ptr = input; *ptr != 0; ptr++) {
-        if(*ptr == '=') {
-            *ptr = 0;
-            ptr++;
-            result[current_index].value = ptr;
-        } else if(*ptr == '&') {
-            *ptr = 0;
-            ptr++;
-            current_index++;
-            if(current_index >= max_parameters) break;
-            result[current_index].key = ptr;
+    char hex[3];
+
+    char *readptr, *writeptr;
+    for(readptr = writeptr = input; *readptr != 0 && current_index < max_parameters; readptr++, writeptr++) {
+        switch (*readptr) {
+            case '=':
+                *writeptr = 0;
+                result[current_index].value = writeptr+1;
+                break;
+            case '&':
+                *writeptr = 0;
+                current_index++;
+                if(current_index < max_parameters) {
+                    result[current_index].key = writeptr+1;
+                    result[current_index].value = NULL;
+                }
+                break;
+            case '%':
+                hex[0] = *(++readptr);
+                hex[1] = *(++readptr);
+                hex[2] = 0;
+                if(!isxdigit(hex[0]) || !isxdigit(hex[1])) return -1;
+                *writeptr = 16*READHEX(hex[0]) + READHEX(hex[1]);
+                break;
+            case '+':
+                *writeptr = ' ';
+                break;
+            default:   
+                *writeptr = *readptr;
         }
     }
+    // Ensure the result is null terminated.
+    *writeptr=0;
 
-    if(current_index < max_parameters && result[current_index].value == NULL) {
-        result[current_index].key = NULL;
-        current_index--;
+    // The state engine can be broken if someone sent two & without an =
+    // This will give an uninitialised pointer.
+    // If they sent two = we just lose part of the input but that's harmless
+    for(int i = 0; i <= current_index && i < max_parameters; i++) {
+        if(result[i].value == NULL) {
+            // Set an empty string by finding a convenient null terminator to point to.
+            for(result[i].value = result[i].key; *(result[i].value) != 0; result[i].value++);
+        }
     }
 
     return current_index + 1;
 }
 
-/**
- * @brief URL Decode a string by interpreting %ab values within it
- * 
- * @param output buffer for result
- * @param input input string
- * @param len  length of the buffer
- * @return int number of characters output or -1 for overflow or format error
- */
-int decode_url_encoded(char *output, const char *input, size_t len) {
-    int destIndex = 0;
-    char hex[3];
-    for(const char *ptr = input; ptr != 0 && destIndex < len; ptr++) {
-        switch (*ptr) {
-            case'%':
-                hex[0] = *(++ptr);
-                hex[1] = *(++ptr);
-                hex[2] = 0;
-                if(!isxdigit(hex[0]) || !isxdigit(hex[1])) return -1;
-                output[destIndex++] = 16*READHEX(hex[0]) + READHEX(hex[1]);
-                break;
-            case '+':
-                output[destIndex++] = ' ';
-                break;
-            default:   
-                output[destIndex++] = *ptr;
-        }
-    }
-    if(destIndex < len) {
-        output[destIndex++] = 0;
-        return destIndex;
-    }
-    return -1;
-}
-
-size_t predict_decoded_length(const char *input) {
-    size_t len = 0;
-    for(const char *ptr = input; *ptr != 0; ptr++) {
-        len++;
-        if(*ptr == '%') {
-            if( *(++ptr) == 0 ) break; // Premature end of string
-            if( *(++ptr) == 0 ) break;
-        }
-    }
-    return len;
-}
