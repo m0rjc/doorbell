@@ -73,14 +73,5 @@ void app_main(void)
     comms_init(0);
     comms_multicast_init();
 
-    int32_t test_count = 0;
-    esp_err_t err = nvs_get_i32(m0rjc_nvs_handle, "test_counter", &test_count);
-    if(err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
-        ESP_ERROR_CHECK(err);
-    }
-    ESP_LOGI(TAG, "Test counter = %d", test_count);
-    test_count++;
-    nvs_set_i32(m0rjc_nvs_handle, "test_counter", test_count);
-
     xTaskCreate(main_loop_task, "Main Event Loop", 2048, NULL, 5, NULL);
 }

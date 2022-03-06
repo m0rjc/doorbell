@@ -19,7 +19,6 @@
 
 static const char *TAG = "wifi.c";
 
-#define HEARTBEAT_INTERVAL_MS 10000
 #define KEEPALIVE_INITIAL_DELAY_MS 1000
 #define KEEPALIVE_BACKOFF_RATE 1.5
 #define KEEPALIVE_MAX_BACKOFF_MS 10000
@@ -61,7 +60,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 void wifi_keepalive_task(void *pvParameter) {
     while(true) {
         int delay = KEEPALIVE_INITIAL_DELAY_MS;
-        EventBits_t bits = xEventGroupWaitBits(main_event_group, WIFI_RECONNECT_REQUEST_BIT, pdTRUE, pdTRUE, pdMS_TO_TICKS(HEARTBEAT_INTERVAL_MS));
+        EventBits_t bits = xEventGroupWaitBits(main_event_group, WIFI_RECONNECT_REQUEST_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
         // Do nothing if just a timeout.
         while((bits & WIFI_RECONNECT_REQUEST_BIT) != 0) {
             ESP_LOGD(TAG, "Keepalive reconnect triggered. Waiting %d milliseconds", delay);
@@ -69,10 +68,11 @@ void wifi_keepalive_task(void *pvParameter) {
             delay *= KEEPALIVE_BACKOFF_RATE;
             if(delay > KEEPALIVE_MAX_BACKOFF_MS) delay = KEEPALIVE_MAX_BACKOFF_MS;
             ESP_LOGD(TAG, "Keepalive reconnect calling esp_wifi_connect");
+            xEventGroupClearBits(main_event_group, WIFI_RECONNECT_REQUEST_BIT);
             esp_wifi_connect();
             
             // Give it up to 10s to connect.
-            bits = xEventGroupWaitBits(main_event_group, WIFI_RECONNECT_REQUEST_BIT, pdTRUE, pdTRUE, pdMS_TO_TICKS(HEARTBEAT_INTERVAL_MS));
+            bits = xEventGroupWaitBits(main_event_group, WIFI_RECONNECT_REQUEST_BIT | WIFI_CONNECTED_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
         }
     }
 }

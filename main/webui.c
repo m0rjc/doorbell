@@ -6,6 +6,7 @@
 
 #include "web/formparams.h"
 #include "web/stringbuilder.h"
+#include "nvs.h"
 #include "webui.h"
 
 #define ROOT_PAGE_BUFFER_SIZE 10240
@@ -16,26 +17,24 @@ static const char *TAG="webui.c";
 static const char *HDR_CONTENT_TYPE = "Content-Type";
 static httpd_handle_t server_handle;
 
-
 static const char *html_config_form =
     "<h2>WiFi</h2>"
     "<form method=\"POST\">"
-    "<label for=\"fname\">Name (alphanumeric):</label>"
-    "<input type=\"text\" id=\"fname\" name=\"n\" maxlength=\"20\" required pattern=\"[A-Za-z0-9 _]+\" value=\"%s\"><br>"
+    "<div class=\"config_fields\">"
+    "<label for=\"fname\">Name:</label>"
+    "<input type=\"text\" id=\"fname\" name=\"n\" maxlength=\"20\" required value=\"%s\">"
     "<label for=\"fssid\">WiFi Network:</label>"
-    "<input type=\"text\" id=\"fssid\" name=\"s\" maxlength=\"40\" required value=\"%s\"><br>"
+    "<input type=\"text\" id=\"fssid\" name=\"s\" maxlength=\"40\" required value=\"%s\">"
     "<label for=\"fpass\">Password:</label>"
-    "<input type=\"text\" id=\"fpass\" name=\"p\" maxlength=\"40\" placeholder=\"unchaged\"><br>"
+    "<input type=\"text\" id=\"fpass\" name=\"p\" maxlength=\"40\" placeholder=\"unchaged\">"
+    "</div>"
     "<input type=\"submit\" value=\"save\">"
     "</form>";
 
 
 static esp_err_t get_handler(httpd_req_t *req) {
-    char *myName = "Sample Name";
-    char *ssid = "My SSID";
-
-    size_t escapedNameSize = sb_predict_escaped_length(myName) + 1;
-    size_t escapeSSIDSize = sb_predict_escaped_length(ssid) + 1;
+    size_t escapedNameSize = sb_predict_escaped_length(m0rjc_config.name) + 1;
+    size_t escapeSSIDSize = sb_predict_escaped_length(m0rjc_config.ssid) + 1;
     string_builder_t *buffers = sb_new_multiple(3, ROOT_PAGE_BUFFER_SIZE, escapedNameSize, escapeSSIDSize);
 
     if(buffers == NULL) {
@@ -43,18 +42,27 @@ static esp_err_t get_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
 
-    sb_append_htmlescape(buffers+1, myName);
+    sb_append_htmlescape(buffers+1, m0rjc_config.name);
     assert(sb_isok(buffers + 1));
     char *escaped_name = buffers[1].buffer;
 
-    sb_append_htmlescape(buffers+2, ssid);
+    sb_append_htmlescape(buffers+2, m0rjc_config.ssid);
     assert(sb_isok(buffers + 2));
     char *escaped_ssid = buffers[2].buffer;
 
-    sb_appendf(buffers, "<html><head><title>ESP32 Network Doorbell %s</title></head>", escaped_name);
+    sb_appendf(buffers, "<html><head>"
+        "<link rel=\"stylesheet\" href=\"style.css\">"
+        "<title>ESP32 Network Doorbell %s</title></head>", escaped_name);
     sb_appendf(buffers, "<body><h1>ESP32 Network Doorbell %s</h1>", escaped_name);
 
     // If config
+    if(req->sess_ctx != NULL) {
+        int *ctx = (int *)req->sess_ctx;
+        if(*ctx == 1) {
+            sb_append(buffers, "<p class=\"msg_ok\">Configuration saved.</p>");
+            *ctx = 0;
+        }
+    }
     sb_appendf(buffers, html_config_form, escaped_name, escaped_ssid);
 
     sb_append(buffers, "</body></html>");
@@ -78,14 +86,26 @@ static httpd_uri_t uri_root_get = {
     .user_ctx = NULL
 };
 
+esp_err_t css_get_handler(httpd_req_t *req) {
+    httpd_resp_set_type(req, "text/css");
+    httpd_resp_sendstr(req, 
+    "body { background: white; foreground: black;}\n"
+    ".msg_ok { background: aquamarine; padding: 2px; border-radius: 2px; }\n"
+    ".config_fields { display: grid; column-gap: 5px; row-gap: 2px; grid-template-columns: max-content max-content; padding: 5px }\n"
+    ".config_fields > label { font: bold; text-align: right; }\n"
+    );
+    return ESP_OK;
+}
+
+static httpd_uri_t uri_css_get = {
+    .uri = "/style.css",
+    .method = HTTP_GET,
+    .handler = css_get_handler,
+    .user_ctx = NULL
+};
+
 esp_err_t config_post_handler(httpd_req_t *req)
 {
-    string_builder_t *buffer = sb_new_multiple(1, 2048);
-    if(buffer == NULL) {
-        httpd_resp_send_err(req, 500, "Cannot allocate space for response");
-        return ESP_FAIL;
-    }
-
     char content[256];
     size_t recv_size = MIN(req->content_len, sizeof(content)-1);
 
@@ -103,10 +123,6 @@ esp_err_t config_post_handler(httpd_req_t *req)
 
     // Split the input into key value pairs
     content[ret] = 0;
-    sb_append(buffer, "RAW: ");
-    sb_append(buffer, content);
-    sb_append(buffer, "\n\n");
-
     form_parameter_t parameters[3];
     int found_parameters = read_form_parameters(content, parameters, 3);
     if(found_parameters > 3) {
@@ -114,17 +130,38 @@ esp_err_t config_post_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
     
+    m0rjc_config_t config;
+    memset(&config, 0, sizeof(m0rjc_config_t));
     for(int i = 0; i < found_parameters; i++) {
-        sb_append(buffer, parameters[i].key);
-        sb_append(buffer, " => ");
-        sb_append(buffer, parameters[i].value);
-        sb_append(buffer, "\n");
+        form_parameter_t *param = parameters + i;
+        // Non-empty value and single letter key
+        if(strlen(param->value) > 0 && strlen(param->key) == 1) {
+            switch (*param->key) {
+                case 'n':
+                    config.name = param->value;
+                    break;
+                case 's':
+                    config.ssid = param->value;
+                    break;
+                case 'p':
+                    config.password = param->value;
+                    break;
+            }
+        }
     }
+    write_config(&config);
+
+    // Use POST-REDIRECT-GET pattern to load the main page again.
     
-    /* Send a simple response */
-    httpd_resp_set_hdr(req, HDR_CONTENT_TYPE, "text/plain");
-    httpd_resp_send(req, buffer->buffer, HTTPD_RESP_USE_STRLEN);
-    free(buffer);
+    if(req->sess_ctx == NULL) {
+        req->sess_ctx = malloc(sizeof(int));
+        if(req->sess_ctx != NULL) {
+            *((int *)req->sess_ctx) = 1;
+        }
+    }
+    httpd_resp_set_status(req, "303 Saved");
+    httpd_resp_set_hdr(req, "Location", "/");
+    httpd_resp_sendstr(req, "");
     return ESP_OK;
 }
 
@@ -139,6 +176,7 @@ void webui_start() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     if(httpd_start(&server_handle, &config) == ESP_OK) {
         httpd_register_uri_handler(server_handle, &uri_root_get);
+        httpd_register_uri_handler(server_handle, &uri_css_get);
         httpd_register_uri_handler(server_handle, &uri_post);
         ESP_LOGI(TAG, "Web server running");
     }
