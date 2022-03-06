@@ -1,16 +1,26 @@
 menu "RJC App Configuration"
-    config ESP_WIFI_SSID
-        string "WiFi SSID"
-        default "myssid"
+    config SETUP_AP_SSID
+        string "Setup AP Name"
+        default "ESP32 Doorbell"
         help
-            SSID (network name) for the example to connect to.
+            SSID (network name) for the configuration mode access point.
 
-    config ESP_WIFI_PASSWORD
-        string "WiFi Password"
-        default "mypassword"
+    config SETUP_AP_PASS
+        string "Seup AP Password"
+        default "Ts3VshEv"
         help
-            WiFi password (WPA or WPA2) for the example to use.
-
-
+            WiFi password (WPA or WPA2) for configuration mode access point.
             
+    config SETUP_AP_CHANNEL
+        int "Setup AP channel"
+        default 1
+        help
+            Channel for the setup access point
+
+    config SETUP_AP_CONN
+        int "Setup AP Max Connections"
+        default 2
+        help
+            Maximum connections for setup access point
+        
 endmenu

@@ -37,11 +37,11 @@ void main_loop_task(void *pvParameter) {
                 case EVENT_TYPE_NETWORK_CHANGE:
                     ESP_LOGI(TAG, "Network change: %s", 
                         event.info.network_change.is_network_up ? "UP" : "DOWN");
-                    if(event.info.network_change.is_network_up) {
-                        webui_start();
-                    } else {
-                        webui_stop();
-                    }
+                    // if(event.info.network_change.is_network_up) {
+                    //     webui_start();
+                    // } else {
+                    //     webui_stop();
+                    // }
                     break;
                 case EVENT_TYPE_PEER_COUNT_CHANGE:
                     ESP_LOGI(TAG, "Peer change: %d peers (%d max), %d buttons, %d ringers",
@@ -71,7 +71,12 @@ void app_main(void)
 
     peers_init();
     comms_init(0);
-    comms_multicast_init();
+
+    webui_start();
+
+    if(strlen(m0rjc_config.ssid) > 0) {
+        comms_multicast_init();
+    }
 
     xTaskCreate(main_loop_task, "Main Event Loop", 2048, NULL, 5, NULL);
 }

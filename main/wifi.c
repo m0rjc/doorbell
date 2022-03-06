@@ -12,6 +12,7 @@
 #include "freertos/queue.h"
 
 #include "mainQueue.h"
+#include "nvs.h"
 #include "wifi.h"
 
 // #include "lwip/err.h"
@@ -79,10 +80,18 @@ void wifi_keepalive_task(void *pvParameter) {
 
 void wifi_init_sta(void)
 {
+    int hasStationConfig = strlen(m0rjc_config.ssid) > 0;
+    int allowAP = !hasStationConfig;
+
     ESP_ERROR_CHECK(esp_netif_init());
 
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
+    if(hasStationConfig) {
+        esp_netif_create_default_wifi_sta();
+    }
+    if(allowAP) {
+        esp_netif_create_default_wifi_ap();
+    }
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_err_t ret = esp_wifi_init(&cfg);
@@ -99,25 +108,48 @@ void wifi_init_sta(void)
                                                         NULL,
                                                         &instance_got_ip));
 
-    wifi_config_t wifi_config = {
+    wifi_config_t wifi_sta_config = {
         .sta = {
-            .ssid = CONFIG_ESP_WIFI_SSID,
-            .password = CONFIG_ESP_WIFI_PASSWORD,
-            /* Setting a password implies station will connect to all security modes including WEP/WPA.
-             * However these modes are deprecated and not advisable to be used. Incase your Access point
-             * doesn't support WPA2, these mode can be enabled by commenting below line */
-	        .threshold.authmode = WIFI_AUTH_WPA2_PSK,
             .sort_method = WIFI_CONNECT_AP_BY_SIGNAL,
             .pmf_cfg = {
                 .capable = true,
                 .required = false
             },
-        },
+        }
     };
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
 
-    xTaskCreate(wifi_keepalive_task, "WiFi Keepalive", 4096, NULL, 1, NULL);
+    wifi_config_t wifi_ap_config = {
+        .ap = {
+            .ssid = CONFIG_SETUP_AP_SSID,
+            .ssid_len = strlen(CONFIG_SETUP_AP_SSID),
+            .channel = CONFIG_SETUP_AP_CHANNEL,
+            .password = CONFIG_SETUP_AP_PASS,
+            .max_connection = CONFIG_SETUP_AP_CONN,
+            .authmode = WIFI_AUTH_WPA_WPA2_PSK
+        }
+    };
+
+    strncpy((char *)wifi_sta_config.sta.ssid, m0rjc_config.ssid, sizeof(wifi_sta_config.sta.ssid));
+    strncpy((char *)wifi_sta_config.sta.password, m0rjc_config.password, sizeof(wifi_sta_config.sta.password));
+
+    if(strlen(m0rjc_config.password) > 0) {
+        wifi_sta_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    }
+    if(strlen(CONFIG_SETUP_AP_PASS) == 0) {
+        wifi_ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    }
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(
+        hasStationConfig ? 
+            (allowAP ? WIFI_MODE_APSTA : WIFI_MODE_STA) :
+            (allowAP ? WIFI_MODE_AP : WIFI_MODE_NULL) ));
+    if(hasStationConfig) {       
+        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config) );
+        xTaskCreate(wifi_keepalive_task, "WiFi Keepalive", 4096, NULL, 1, NULL);
+    }
+    if(allowAP) {
+        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config));
+    }
 
     ESP_ERROR_CHECK(esp_wifi_start() );
 
