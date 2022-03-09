@@ -15,6 +15,7 @@
 #include "esp_crc.h"
 #include "esp_mac.h"
 
+#include "nvs.h"
 #include "mainQueue.h"
 #include "comms.h"
 #include "peers.h"
@@ -22,12 +23,18 @@
 #define HEARTBEAT_INTERVAL_MS 5000
 #define PACKET_BURST_COUNT 5
 
+// Remember rings we've received.
+// Needs to be at least the size of the number of buttons in the system that we expect
+// to be pressable within the debounce and send retry period.
+#define REPLAY_BUFFER_LENGTH 5
+
 static const char *TAG = "comms.c";
 static const char PACKET_MAGIC_NUMBER[] = {0xD0, 0x00, 0xBE, 0x11};
 
 
 static uint8_t s_my_node_id[NODE_ID_LEN];
 static uint8_t s_my_node_flags;
+static ring_event_number_t s_replay_buffer[REPLAY_BUFFER_LENGTH];
 
 send_broadcast_function_t *comms_send_callback = NULL;
 
@@ -68,6 +75,21 @@ static void comms_send_heartbeat() {
     packet.info.heartbeat.current_free_heap = esp_get_free_heap_size();
     packet.info.heartbeat.uptime = esp_timer_get_time();
     memcpy(packet.info.heartbeat.node_id, s_my_node_id, NODE_ID_LEN);
+    strncpy(packet.info.heartbeat.node_name, m0rjc_config.name, NODE_NAME_LEN);
+
+    for(int i = 0; i < PACKET_BURST_COUNT; i++) {
+        comms_send_packet(&packet);
+    }
+}
+
+void comms_send_ring(ring_event_number_t ring_number) {
+    ESP_LOGI(TAG, "Send ring %ux", ring_number);
+    packet_t packet;
+    esp_fill_random(&packet, sizeof(packet_t));
+    packet.id = PACKET_TYPE_RING_EVENT;
+    packet.info.ring.event_number = ring_number;
+    memcpy(packet.info.ring.node_id, s_my_node_id, NODE_ID_LEN);
+    strncpy(packet.info.ring.node_name, m0rjc_config.name, NODE_NAME_LEN);
 
     for(int i = 0; i < PACKET_BURST_COUNT; i++) {
         comms_send_packet(&packet);
@@ -95,11 +117,12 @@ void comms_init(uint8_t my_node_flags) {
     s_my_node_flags = my_node_flags;
     memset(s_my_node_id, 0, sizeof(s_my_node_id));
     esp_base_mac_addr_get(s_my_node_id);
+    memset(s_replay_buffer, 0, sizeof(s_replay_buffer));
 
     xTaskCreate(heartbeat_task, "Comms Heartbeat Task", 4096, NULL, 1, NULL);
 }
 
-void onHeartbeat(packet_type_heartbeat_t *heartbeat) {
+static void onHeartbeat(packet_type_heartbeat_t *heartbeat) {
     ESP_LOGD(TAG, "Got Heartbeat from "MACSTR" uptime %llu seconds, min heap %d, heap %d, flags %x", 
         MAC2STR(heartbeat->node_id), 
         heartbeat->uptime / 1000000, 
@@ -110,12 +133,46 @@ void onHeartbeat(packet_type_heartbeat_t *heartbeat) {
     peers_on_heartbeat(heartbeat);
 }
 
+static void onRingPacket(packet_type_ring_event_t *packetinfo) {
+    ring_event_number_t event_number = packetinfo->event_number;
+    int found = 0;
+    for(int i = 0; i < REPLAY_BUFFER_LENGTH; i++) {
+        if(s_replay_buffer[i] == event_number) {
+            found++;
+            break;
+        }
+    }
+    if(found == 0) {
+        ESP_LOGD(TAG, "RING from "MACSTR" with number %ux", MAC2STR(packetinfo->node_id), packetinfo->event_number);
+        memmove(s_replay_buffer+1, s_replay_buffer, (REPLAY_BUFFER_LENGTH-1) * sizeof(ring_event_number_t));
+        s_replay_buffer[0] = event_number;
+
+        main_queue_event_t event;
+        event.id = EVENT_TYPE_REMOTE_BELL_BUTTON_PUSH;
+        event.info.remote_button_push.ring_number = event_number;
+        memcpy(event.info.remote_button_push.node_id, packetinfo->node_id, NODE_ID_LEN);
+        strncpy(event.info.remote_button_push.node_name, packetinfo->node_name, NODE_NAME_LEN);
+        event.info.remote_button_push.node_name[NODE_NAME_LEN] = 0;
+
+        if(xQueueSend(main_queue, &event, QUEUE_SEND_BLOCK_TICKS) == pdFALSE) {
+            // It would be nice not to have populated the replay buffer, but the blocking here
+            // means time has passed during which more packets may have arrived. I don't want to
+            // lock the replay buffer for this time. If this is a problem I could make it bigger
+            // and clear the entry here. Null entries will then propagate through it.
+            ESP_LOGE(TAG, "Failed to publish button push event");
+        }
+    }
+}
+
 void comms_on_packet(void *buffer, int length) {
     if(comms_verify_packet(buffer, length)) {
         packet_t *packet = (packet_t *) buffer;
         switch(packet->id) {
             case PACKET_TYPE_HEARTBEAT:
                 onHeartbeat(&packet->info.heartbeat);
+                break;
+            case PACKET_TYPE_RING_EVENT:
+                onRingPacket(&packet->info.ring);
                 break;
             default:
                 ESP_LOGW(TAG, "comms_on_packet: Unexpected packet type %d", packet->id);

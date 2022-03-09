@@ -3,9 +3,9 @@
 #define NODE_FLAG_HAS_BUTTON 1
 #define NODE_FLAG_HAS_RINGER 2
 
-#define NODE_ID_LEN 8
+#include "common.h"
 
-typedef int32_t ring_event_number_t;
+typedef uint32_t ring_event_number_t;
 
 typedef enum {
     PACKET_TYPE_HEARTBEAT,
@@ -15,6 +15,7 @@ typedef enum {
 
 typedef struct {
     uint8_t node_id[NODE_ID_LEN];
+    char node_name[NODE_NAME_LEN + 1];
     uint32_t minimum_free_heap;
     uint32_t current_free_heap;
     uint64_t uptime;
@@ -23,6 +24,7 @@ typedef struct {
 
 typedef struct {
     uint8_t node_id[NODE_ID_LEN];
+    char node_name[NODE_NAME_LEN + 1];
     ring_event_number_t event_number;
 } packet_type_ring_event_t;
 
@@ -73,5 +75,5 @@ void comms_on_packet(void *buffer, int length);
  * 
  * @param ring_number 
  */
-void comms_send_ring();
+void comms_send_ring(uint32_t ring_number);
 

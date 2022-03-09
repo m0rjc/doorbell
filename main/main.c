@@ -27,6 +27,7 @@
 #include "peers.h"
 #include "webui.h"
 #include "dipswitches.h"
+#include "pushbutton.h"
 
 static const char *TAG = "main.c";
 
@@ -51,6 +52,12 @@ void main_loop_task(void *pvParameter) {
                         event.info.peer_change.peers_with_button,
                         event.info.peer_change.peers_with_ringer);
                     setBlueLed(event.info.peer_change.peers > 0 ? 1 : 0);
+                    break;
+                case EVENT_TYPE_BELL_BUTTON_PUSH:
+                    comms_send_ring(event.info.bell_button_push.ring_number);
+                    break;
+                case EVENT_TYPE_REMOTE_BELL_BUTTON_PUSH:
+                    ESP_LOGI(TAG, "Remote button push from "MACSTR" %s number %ux", MAC2STR(event.info.remote_button_push.node_id), event.info.remote_button_push.node_name, event.info.remote_button_push.ring_number);
                     break;
                 case EVENT_TYPE_ACKNOWLEDGE_COUNT_CHANGE:
                     ESP_LOGI(TAG, "ACK event: %d ringers of %d",
@@ -88,7 +95,8 @@ void app_main(void)
 
     if(DIP_IS_MODE_RUN) {
         comms_multicast_init();
+        if(DIP_HAS_BUTTON) pushbutton_init();
     }
 
-    xTaskCreate(main_loop_task, "Main Event Loop", 2048, NULL, 5, NULL);
+    xTaskCreate(main_loop_task, "Main Event Loop", 4096, NULL, 5, NULL);
 }

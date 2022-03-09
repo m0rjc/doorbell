@@ -15,7 +15,6 @@
 #include "common.h"
 
 #define KEEPALIVE_LIFE_MS 20000
-#define TASK_NOTIFY_INDEX 0
 
 peer_info_t peer_infos[MAX_PEERS];
 comms_status_summary_t comms_status_summary;
@@ -143,6 +142,8 @@ void peers_on_heartbeat(packet_type_heartbeat_t *heartbeat) {
         peer_info->node_flags = heartbeat->node_flags;
         peer_info->last_seen_time = 0;
         memcpy(peer_info->node_id, heartbeat->node_id, NODE_ID_LEN);
+        strncpy(peer_info->name, heartbeat->node_name, NODE_NAME_LEN);
+        peer_info->name[NODE_NAME_LEN] = 0;
     }
 
     if(peer_info == NULL) {
