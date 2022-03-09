@@ -26,6 +26,7 @@
 #include "nvs.h"
 #include "peers.h"
 #include "webui.h"
+#include "dipswitches.h"
 
 static const char *TAG = "main.c";
 
@@ -64,17 +65,28 @@ void main_loop_task(void *pvParameter) {
 void app_main(void)
 {
     esp_timer_early_init();
+    dip_switchs_init();
     initialise_nvs();
     main_queue_init();
+
+    if(strlen(m0rjc_config.ssid) == 0) {
+        // Force config mode
+        dip_switches |= DIP_SWITCH_MODE_CONFIG;
+    }
+
     wifi_init_sta();
     initBlueLed();
 
     peers_init();
-    comms_init(0);
+
+    uint8_t node_flags = 0;
+    if(DIP_HAS_BUTTON) node_flags |= NODE_FLAG_HAS_BUTTON;
+    if(DIP_HAS_RINGER) node_flags |= NODE_FLAG_HAS_RINGER;
+    comms_init(node_flags);
 
     webui_start();
 
-    if(strlen(m0rjc_config.ssid) > 0) {
+    if(DIP_IS_MODE_RUN) {
         comms_multicast_init();
     }
 

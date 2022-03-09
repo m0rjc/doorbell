@@ -12,19 +12,12 @@
 #include "comms.h"
 #include "mainQueue.h"
 #include "peers.h"
+#include "common.h"
 
-#define MAX_PEERS 10
 #define KEEPALIVE_LIFE_MS 20000
 #define TASK_NOTIFY_INDEX 0
 
-typedef struct  {
-    bool is_active;
-    uint8_t node_id[NODE_ID_LEN];
-    uint8_t node_flags;
-    uint64_t last_seen_time;
-} peer_info_t;
-
-static peer_info_t s_peers[MAX_PEERS];
+peer_info_t peer_infos[MAX_PEERS];
 comms_status_summary_t comms_status_summary;
 static StaticSemaphore_t s_peer_static_semaphore;
 static SemaphoreHandle_t s_peer_semaphore;
@@ -52,7 +45,7 @@ static int recalculate_peer_summary() {
         0;
 
     for(int i = 0; i < MAX_PEERS; i++) {
-        peer_info_t *peer = s_peers+i;
+        peer_info_t *peer = peer_infos+i;
         if(peer->is_active) {
             if(peer->last_seen_time < oldest_valid) {
                 ESP_LOGI(TAG, "Peer "MACSTR" disappeared", MAC2STR(peer->node_id));
@@ -119,7 +112,7 @@ void peers_init() {
     comms_status_summary.peers_with_ringer = 0;
     comms_status_summary.ringers_acknowledged_last_ring = 0;
 
-    for(int i = 0; i < MAX_PEERS; i++) s_peers[i].is_active = false;
+    for(int i = 0; i < MAX_PEERS; i++) peer_infos[i].is_active = false;
     s_peer_semaphore = xSemaphoreCreateMutexStatic(&s_peer_static_semaphore);
 
     xTaskCreate(cleanup_task, "Peer List Maintenance", 2048, NULL, 1, &cleanup_task_handle);
@@ -134,11 +127,11 @@ void peers_on_heartbeat(packet_type_heartbeat_t *heartbeat) {
     peer_info_t *peer_info = NULL;
     peer_info_t *first_free_slot = NULL;
     for(int i = 0; i < MAX_PEERS && peer_info == NULL; i++) {
-        if(memcmp(s_peers[i].node_id, heartbeat->node_id, NODE_ID_LEN) == 0) {
-            peer_info = s_peers + i;
+        if(memcmp(peer_infos[i].node_id, heartbeat->node_id, NODE_ID_LEN) == 0) {
+            peer_info = peer_infos + i;
         }
-        if(!s_peers[i].is_active) {
-            first_free_slot = s_peers + i;
+        if(!peer_infos[i].is_active) {
+            first_free_slot = peer_infos + i;
         }
     }
 

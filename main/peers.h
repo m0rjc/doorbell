@@ -1,6 +1,19 @@
 #pragma once
 
 #include "comms.h"
+#include "common.h"
+
+#define MAX_PEERS 10
+
+typedef struct  {
+    bool is_active;
+    char name[NODE_NAME_LEN + 1];
+    uint8_t node_id[NODE_ID_LEN];
+    uint8_t node_flags;
+    uint64_t last_seen_time;
+} peer_info_t;
+
+extern peer_info_t peer_infos[MAX_PEERS];
 
 typedef struct {
     int peers;

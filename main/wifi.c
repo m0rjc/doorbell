@@ -11,6 +11,7 @@
 
 #include "freertos/queue.h"
 
+#include "dipswitches.h"
 #include "mainQueue.h"
 #include "nvs.h"
 #include "wifi.h"
@@ -80,8 +81,8 @@ void wifi_keepalive_task(void *pvParameter) {
 
 void wifi_init_sta(void)
 {
-    int hasStationConfig = strlen(m0rjc_config.ssid) > 0;
-    int allowAP = !hasStationConfig;
+    int hasStationConfig = strlen(m0rjc_config.ssid) > 0 && DIP_IS_MODE_RUN_WIFI;
+    int allowAP = !hasStationConfig || DIP_IS_MODE_CONFIG;
 
     ESP_ERROR_CHECK(esp_netif_init());
 

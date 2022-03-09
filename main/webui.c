@@ -8,6 +8,9 @@
 #include "web/stringbuilder.h"
 #include "nvs.h"
 #include "webui.h"
+#include "dipswitches.h"
+#include "peers.h"
+#include "common.h"
 
 #define ROOT_PAGE_BUFFER_SIZE 10240
 
@@ -22,7 +25,7 @@ static const char *html_config_form =
     "<form method=\"POST\">"
     "<div class=\"config_fields\">"
     "<label for=\"fname\">Name:</label>"
-    "<input type=\"text\" id=\"fname\" name=\"n\" maxlength=\"20\" required value=\"%s\">"
+    "<input type=\"text\" id=\"fname\" name=\"n\" maxlength=\"%d\" required value=\"%s\">"
     "<label for=\"fssid\">WiFi Network:</label>"
     "<input type=\"text\" id=\"fssid\" name=\"s\" maxlength=\"40\" required value=\"%s\">"
     "<label for=\"fpass\">Password:</label>"
@@ -31,6 +34,31 @@ static const char *html_config_form =
     "<input type=\"submit\" value=\"save\">"
     "</form>";
 
+static void report_status(string_builder_t *sb) {
+    sb_append(sb, "<H2>Status</H2>"
+        "<table><tr><th>Node</th><th>Address</th><th>Ringer</th><th>Button</th><th>Last Seen</th></tr>");
+    
+    sb_append(sb, "<tr class=\"myself\"><th>");
+    sb_append_htmlescape(sb, m0rjc_config.name);
+    sb_appendf(sb, "</th><td>(todo)</td><td>%c</td><td>%c</td><td>This Node</td></tr>",
+        DIP_HAS_RINGER ? 'Y' : '-',
+        DIP_HAS_BUTTON ? 'Y' : '-');
+
+    uint64_t now = esp_timer_get_time() + 500000; // Rounding offset when truncating
+    for(int i = 0; i < MAX_PEERS; i++) {
+        if(peer_infos[i].is_active) {
+            sb_append(sb, "<tr><th>");
+            sb_append_htmlescape(sb, peer_infos[i].name);
+            sb_appendf(sb, "</th><td>"MACSTR"</td><td>%c</td><td>%c</td><td>%d seconds</td></tr>",
+                MAC2STR(peer_infos[i].node_id),
+                (peer_infos[i].node_flags & NODE_FLAG_HAS_RINGER) ? 'Y' : '-',
+                (peer_infos[i].node_flags & NODE_FLAG_HAS_BUTTON) ? 'Y' : '-',
+                (int)((now - peer_infos[i].last_seen_time)/1000000)
+            );
+        }
+    }
+    sb_append(sb, "</table>");
+}
 
 static esp_err_t get_handler(httpd_req_t *req) {
     size_t escapedNameSize = sb_predict_escaped_length(m0rjc_config.name) + 1;
@@ -55,15 +83,20 @@ static esp_err_t get_handler(httpd_req_t *req) {
         "<title>ESP32 Network Doorbell %s</title></head>", escaped_name);
     sb_appendf(buffers, "<body><h1>ESP32 Network Doorbell %s</h1>", escaped_name);
 
-    // If config
-    if(req->sess_ctx != NULL) {
-        int *ctx = (int *)req->sess_ctx;
-        if(*ctx == 1) {
-            sb_append(buffers, "<p class=\"msg_ok\">Configuration saved.</p>");
-            *ctx = 0;
-        }
+    if(DIP_IS_MODE_RUN) {
+        report_status(buffers);
     }
-    sb_appendf(buffers, html_config_form, escaped_name, escaped_ssid);
+
+    if(DIP_IS_MODE_CONFIG) {
+        if(req->sess_ctx != NULL) {
+            int *ctx = (int *)req->sess_ctx;
+            if(*ctx == 1) {
+                sb_append(buffers, "<p class=\"msg_ok\">Configuration saved.</p>");
+                *ctx = 0;
+            }
+        }
+        sb_appendf(buffers, html_config_form, NODE_NAME_LEN, escaped_name, escaped_ssid);
+    }
 
     sb_append(buffers, "</body></html>");
 
@@ -91,6 +124,7 @@ esp_err_t css_get_handler(httpd_req_t *req) {
     httpd_resp_sendstr(req, 
     "body { background: white; foreground: black;}\n"
     ".msg_ok { background: aquamarine; padding: 2px; border-radius: 2px; }\n"
+    ".msg_err { background: pink; padding: 2px; border-radius: 2px; }\n"
     ".config_fields { display: grid; column-gap: 5px; row-gap: 2px; grid-template-columns: max-content max-content; padding: 5px }\n"
     ".config_fields > label { font: bold; text-align: right; }\n"
     );
@@ -106,6 +140,11 @@ static httpd_uri_t uri_css_get = {
 
 esp_err_t config_post_handler(httpd_req_t *req)
 {
+    if(!DIP_IS_MODE_CONFIG) {
+        httpd_resp_send_err(req, 403, "Forbidden. Use the dip switches to enable configuration");
+        return ESP_OK;
+    }
+
     char content[256];
     size_t recv_size = MIN(req->content_len, sizeof(content)-1);
 
@@ -138,6 +177,8 @@ esp_err_t config_post_handler(httpd_req_t *req)
         if(strlen(param->value) > 0 && strlen(param->key) == 1) {
             switch (*param->key) {
                 case 'n':
+                    // If it's too long just truncate it.
+                    if(strlen(param->value) > NODE_ID_LEN) param->value[NODE_NAME_LEN] = 0;
                     config.name = param->value;
                     break;
                 case 's':
