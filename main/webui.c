@@ -146,7 +146,7 @@ esp_err_t config_post_handler(httpd_req_t *req)
     }
 
     char content[256];
-    size_t recv_size = MIN(req->content_len, sizeof(content)-1);
+    size_t recv_size = MIN(req->content_len, sizeof(content));
 
     int ret = httpd_req_recv(req, content, recv_size);
     if (ret <= 0) {  /* 0 return value indicates connection closed */
@@ -178,7 +178,7 @@ esp_err_t config_post_handler(httpd_req_t *req)
             switch (*param->key) {
                 case 'n':
                     // If it's too long just truncate it.
-                    if(strlen(param->value) > NODE_ID_LEN) param->value[NODE_NAME_LEN] = 0;
+                    if(strlen(param->value) > NODE_NAME_LEN) param->value[NODE_NAME_LEN] = 0;
                     config.name = param->value;
                     break;
                 case 's':
