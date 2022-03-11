@@ -5,7 +5,6 @@ static const char *NAMESPACE = "m0rjc";
 static const char *NVS_KEY_SSID = "ssid";
 static const char *NVS_KEY_PASSWORD = "pass";
 static const char *NVS_KEY_NAME = "name";
-static const char *NVS_KEY_HAS_CONNECTED = "setup_ok";
 
 static nvs_handle_t m0rjc_nvs_handle;
 m0rjc_config_t m0rjc_config;

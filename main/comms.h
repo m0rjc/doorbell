@@ -26,6 +26,7 @@ typedef struct {
     uint8_t node_id[NODE_ID_LEN];
     char node_name[NODE_NAME_LEN + 1];
     ring_event_number_t event_number;
+    uint8_t ring_pattern_number;
 } packet_type_ring_event_t;
 
 typedef struct {
@@ -75,5 +76,5 @@ void comms_on_packet(void *buffer, int length);
  * 
  * @param ring_number 
  */
-void comms_send_ring(uint32_t ring_number);
+void comms_send_ring(uint32_t ring_number, uint8_t ring_pattern_number);
 

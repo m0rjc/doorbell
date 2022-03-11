@@ -7,6 +7,7 @@
 
 typedef struct  {
     bool is_active;
+    bool acknowledged;
     char name[NODE_NAME_LEN + 1];
     uint8_t node_id[NODE_ID_LEN];
     uint8_t node_flags;
@@ -28,3 +29,9 @@ extern comms_status_summary_t comms_status_summary;
 void peers_init();
 
 void peers_on_heartbeat(packet_type_heartbeat_t *heartbeat);
+
+void peers_clear_acknowledge_status();
+
+void peers_set_acknowledged(uint8_t *node_id);
+
+void peers_count_acknowledgements(int *expected, int *found);

@@ -29,6 +29,12 @@ menu "RJC App Configuration"
         help
             GPIO number for DIP SWITCH 4, Currenly unused but may become button polarity or run mode.
         
+    config GPIO_RINGER_NUM
+        int "Ringer GPIO"
+        default 12
+        help
+            GPIO number for the ringer
+
     config SETUP_AP_SSID
         string "Setup AP Name"
         default "ESP32 Doorbell"

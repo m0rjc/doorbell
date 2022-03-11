@@ -20,8 +20,10 @@
 #include "comms.h"
 #include "peers.h"
 
-#define HEARTBEAT_INTERVAL_MS 5000
-#define PACKET_BURST_COUNT 5
+#define HEARTBEAT_INTERVAL_MS 2000
+#define HEARTBEAT_BURST_COUNT 2
+#define RING_BURST_COUNT 2
+#define ACK_BURST_COUNT 2
 
 // Remember rings we've received.
 // Needs to be at least the size of the number of buttons in the system that we expect
@@ -77,12 +79,12 @@ static void comms_send_heartbeat() {
     memcpy(packet.info.heartbeat.node_id, s_my_node_id, NODE_ID_LEN);
     strncpy(packet.info.heartbeat.node_name, m0rjc_config.name, NODE_NAME_LEN);
 
-    for(int i = 0; i < PACKET_BURST_COUNT; i++) {
+    for(int i = 0; i < HEARTBEAT_BURST_COUNT; i++) {
         comms_send_packet(&packet);
     }
 }
 
-void comms_send_ring(ring_event_number_t ring_number) {
+void comms_send_ring(ring_event_number_t ring_number, uint8_t ring_pattern_number) {
     ESP_LOGI(TAG, "Send ring %ux", ring_number);
     packet_t packet;
     esp_fill_random(&packet, sizeof(packet_t));
@@ -90,8 +92,21 @@ void comms_send_ring(ring_event_number_t ring_number) {
     packet.info.ring.event_number = ring_number;
     memcpy(packet.info.ring.node_id, s_my_node_id, NODE_ID_LEN);
     strncpy(packet.info.ring.node_name, m0rjc_config.name, NODE_NAME_LEN);
+    packet.info.ring.ring_pattern_number = ring_pattern_number;
 
-    for(int i = 0; i < PACKET_BURST_COUNT; i++) {
+    for(int i = 0; i < RING_BURST_COUNT; i++) {
+        comms_send_packet(&packet);
+    }
+}
+
+static void comms_send_ack(ring_event_number_t ring_number) {
+    packet_t packet;
+    esp_fill_random(&packet, sizeof(packet_t));
+    packet.id = PACKET_TYPE_RING_ACKNOWLEDGE;
+    packet.info.ring_ack.event_number = ring_number;
+    memcpy(packet.info.ring_ack.ack_node_id, s_my_node_id, NODE_ID_LEN);
+
+    for(int i = 0; i < ACK_BURST_COUNT; i++) {
         comms_send_packet(&packet);
     }
 }
@@ -142,6 +157,7 @@ static void onRingPacket(packet_type_ring_event_t *packetinfo) {
             break;
         }
     }
+    bool can_ack = true;
     if(found == 0) {
         ESP_LOGD(TAG, "RING from "MACSTR" with number %ux", MAC2STR(packetinfo->node_id), packetinfo->event_number);
         memmove(s_replay_buffer+1, s_replay_buffer, (REPLAY_BUFFER_LENGTH-1) * sizeof(ring_event_number_t));
@@ -153,6 +169,7 @@ static void onRingPacket(packet_type_ring_event_t *packetinfo) {
         memcpy(event.info.remote_button_push.node_id, packetinfo->node_id, NODE_ID_LEN);
         strncpy(event.info.remote_button_push.node_name, packetinfo->node_name, NODE_NAME_LEN);
         event.info.remote_button_push.node_name[NODE_NAME_LEN] = 0;
+        event.info.remote_button_push.ring_pattern_number = packetinfo->ring_pattern_number;
 
         if(xQueueSend(main_queue, &event, QUEUE_SEND_BLOCK_TICKS) == pdFALSE) {
             // It would be nice not to have populated the replay buffer, but the blocking here
@@ -160,8 +177,23 @@ static void onRingPacket(packet_type_ring_event_t *packetinfo) {
             // lock the replay buffer for this time. If this is a problem I could make it bigger
             // and clear the entry here. Null entries will then propagate through it.
             ESP_LOGE(TAG, "Failed to publish button push event");
+            can_ack = false;
         }
     }
+
+    if(can_ack) {
+        comms_send_ack(packetinfo->event_number);
+    }
+}
+
+static void onRingAcknowledge(packet_type_ring_acknowledge_t *packet) {
+    main_queue_event_t event;
+    event.id = EVENT_TYPE_ACKNOWLEDGE;
+    event.info.acknowledge.event_number = packet->event_number;
+    memcpy(event.info.acknowledge.node_id, packet->ack_node_id, NODE_ID_LEN);
+    if(xQueueSend(main_queue, &event, QUEUE_SEND_BLOCK_TICKS) == pdFALSE) {
+        ESP_LOGE(TAG, "Failed to publish acknowledge event");
+    }    
 }
 
 void comms_on_packet(void *buffer, int length) {
@@ -173,6 +205,9 @@ void comms_on_packet(void *buffer, int length) {
                 break;
             case PACKET_TYPE_RING_EVENT:
                 onRingPacket(&packet->info.ring);
+                break;
+            case PACKET_TYPE_RING_ACKNOWLEDGE:
+                onRingAcknowledge(&packet->info.ring_ack);
                 break;
             default:
                 ESP_LOGW(TAG, "comms_on_packet: Unexpected packet type %d", packet->id);

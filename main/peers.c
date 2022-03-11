@@ -159,3 +159,38 @@ void peers_on_heartbeat(packet_type_heartbeat_t *heartbeat) {
     xSemaphoreGive(s_peer_semaphore);
     xTaskNotifyGiveIndexed(cleanup_task_handle, TASK_NOTIFY_INDEX);
 }
+
+void peers_clear_acknowledge_status() {
+    for(int i = 0; i < MAX_PEERS; i++) {
+        peer_infos[i].acknowledged = false;
+    }
+}
+
+void peers_set_acknowledged(uint8_t *node_id) {
+    if(xSemaphoreTake(s_peer_semaphore, pdMS_TO_TICKS(QUEUE_SEND_BLOCK_TICKS)) == pdFALSE) {
+        ESP_LOGE(TAG, "Failed to take sempahore for peer modification");
+        return;
+    }
+
+    for(int i = 0; i < MAX_PEERS; i++) {
+        peer_info_t *peer = peer_infos + i;
+        if(peer->is_active && memcmp(peer->node_id, node_id, NODE_ID_LEN) == 0) {
+            peer->acknowledged = true;
+        }
+    }
+
+    xSemaphoreGive(s_peer_semaphore);
+}
+
+void peers_count_acknowledgements(int *expected, int *found) {
+    *expected = 0;
+    *found = 0;
+    for(int i = 0; i < MAX_PEERS; i++) {
+        peer_info_t *peer = peer_infos + i;
+        if(peer->is_active && peer->node_flags & NODE_FLAG_HAS_RINGER) {
+            (*expected)++;
+            if(peer->acknowledged) (*found)++;
+        }
+    }
+
+}

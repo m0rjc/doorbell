@@ -28,22 +28,27 @@
 #include "webui.h"
 #include "dipswitches.h"
 #include "pushbutton.h"
+#include "ringer.h"
+
+#define RING_RETRY_DELAY pdMS_TO_TICKS(500)
+#define RING_RETRY_COUNT 5
 
 static const char *TAG = "main.c";
 
 void main_loop_task(void *pvParameter) {
+    uint8_t my_ring_index = 0;
+    ring_event_number_t current_ring_event = 0;
+    int ring_retries = 0;
+    int expected_acks = 0;
+    int found_acks = 0;
     while(true) {
         main_queue_event_t event;
-        if(xQueueReceive(main_queue, &event, portMAX_DELAY) == pdTRUE) {
+        TickType_t delay = current_ring_event ? RING_RETRY_DELAY : portMAX_DELAY;
+        if(xQueueReceive(main_queue, &event, delay) == pdTRUE) {
             switch(event.id) {
                 case EVENT_TYPE_NETWORK_CHANGE:
                     ESP_LOGI(TAG, "Network change: %s", 
                         event.info.network_change.is_network_up ? "UP" : "DOWN");
-                    // if(event.info.network_change.is_network_up) {
-                    //     webui_start();
-                    // } else {
-                    //     webui_stop();
-                    // }
                     break;
                 case EVENT_TYPE_PEER_COUNT_CHANGE:
                     ESP_LOGI(TAG, "Peer change: %d peers (%d max), %d buttons, %d ringers",
@@ -54,16 +59,36 @@ void main_loop_task(void *pvParameter) {
                     setBlueLed(event.info.peer_change.peers > 0 ? 1 : 0);
                     break;
                 case EVENT_TYPE_BELL_BUTTON_PUSH:
-                    comms_send_ring(event.info.bell_button_push.ring_number);
+                    current_ring_event = event.info.bell_button_push.ring_number;
+                    ring_retries = 0;
+                    peers_clear_acknowledge_status();
+                    peers_count_acknowledgements(&expected_acks, &found_acks);
+                    comms_send_ring(current_ring_event, my_ring_index);
+                    ringer_ring(my_ring_index);
                     break;
                 case EVENT_TYPE_REMOTE_BELL_BUTTON_PUSH:
                     ESP_LOGI(TAG, "Remote button push from "MACSTR" %s number %ux", MAC2STR(event.info.remote_button_push.node_id), event.info.remote_button_push.node_name, event.info.remote_button_push.ring_number);
+                    ringer_ring(0);
                     break;
-                case EVENT_TYPE_ACKNOWLEDGE_COUNT_CHANGE:
-                    ESP_LOGI(TAG, "ACK event: %d ringers of %d",
-                        event.info.acknowledge_change.ringers_ackowledged,
-                        event.info.acknowledge_change.peers_with_ringer);
+                case EVENT_TYPE_ACKNOWLEDGE:
+                    if(event.info.acknowledge.event_number == current_ring_event) {
+                        peers_set_acknowledged(event.info.acknowledge.node_id);
+                        peers_count_acknowledgements(&expected_acks, &found_acks);
+                        ESP_LOGI(TAG, "ACK event: %d ringers of %d acknowledged",
+                            found_acks, expected_acks);
+                    }
                     break;
+            }
+        } else {
+            // Timeout waiting, so if needed resend
+            if(current_ring_event != 0) {
+                if(ring_retries < RING_RETRY_COUNT && found_acks < expected_acks) {
+                    ring_retries++;
+                    ESP_LOGI(TAG, "Resending ring message");
+                    comms_send_ring(current_ring_event, my_ring_index); 
+                } else {
+                    current_ring_event = 0;
+                }
             }
         }
     }
@@ -85,6 +110,7 @@ void app_main(void)
     initBlueLed();
 
     peers_init();
+    ringer_init();
 
     uint8_t node_flags = 0;
     if(DIP_HAS_BUTTON) node_flags |= NODE_FLAG_HAS_BUTTON;
