@@ -35,20 +35,35 @@
 
 static const char *TAG = "main.c";
 
-void main_loop_task(void *pvParameter) {
+static bool has_meaningful_connection() {
+    // If I have a button I need a bell.
+    // If I have a bell I need a button.
+    // If I have both I'm always happy.
+    if(DIP_HAS_BUTTON) {
+        return DIP_HAS_RINGER || comms_status_summary.peers_with_ringer > 0;
+    }
+    if(DIP_HAS_RINGER) {
+        return comms_status_summary.peers_with_button > 0;
+    }
+    return 0;
+}
+
+static void main_loop_task(void *pvParameter) {
     uint8_t my_ring_index = 0;
+    bool polling_needed = false;
     ring_event_number_t current_ring_event = 0;
     int ring_retries = 0;
     int expected_acks = 0;
     int found_acks = 0;
     while(true) {
         main_queue_event_t event;
-        TickType_t delay = current_ring_event ? RING_RETRY_DELAY : portMAX_DELAY;
+        TickType_t delay = polling_needed ? RING_RETRY_DELAY : portMAX_DELAY;
         if(xQueueReceive(main_queue, &event, delay) == pdTRUE) {
             switch(event.id) {
                 case EVENT_TYPE_NETWORK_CHANGE:
                     ESP_LOGI(TAG, "Network change: %s", 
                         event.info.network_change.is_network_up ? "UP" : "DOWN");
+                        setBlueLed(event.info.network_change.is_network_up ? 1 : 0);
                     break;
                 case EVENT_TYPE_PEER_COUNT_CHANGE:
                     ESP_LOGI(TAG, "Peer change: %d peers (%d max), %d buttons, %d ringers",
@@ -56,7 +71,7 @@ void main_loop_task(void *pvParameter) {
                         event.info.peer_change.max_peers,
                         event.info.peer_change.peers_with_button,
                         event.info.peer_change.peers_with_ringer);
-                    setBlueLed(event.info.peer_change.peers > 0 ? 1 : 0);
+                        setUserLed(has_meaningful_connection() ? STATUS_LED_READY : STATUS_LED_OFF);
                     break;
                 case EVENT_TYPE_BELL_BUTTON_PUSH:
                     current_ring_event = event.info.bell_button_push.ring_number;
@@ -65,15 +80,20 @@ void main_loop_task(void *pvParameter) {
                     peers_count_acknowledgements(&expected_acks, &found_acks);
                     comms_send_ring(current_ring_event, my_ring_index);
                     ringer_ring(my_ring_index);
+                    setUserLed(STATUS_LED_OFF);
+                    polling_needed = true;
                     break;
                 case EVENT_TYPE_REMOTE_BELL_BUTTON_PUSH:
                     ESP_LOGI(TAG, "Remote button push from "MACSTR" %s number %ux", MAC2STR(event.info.remote_button_push.node_id), event.info.remote_button_push.node_name, event.info.remote_button_push.ring_number);
-                    ringer_ring(0);
+                    setUserLed(STATUS_LED_READY_RX);
+                    polling_needed = true;
+                    ringer_ring(event.info.remote_button_push.ring_pattern_number);
                     break;
                 case EVENT_TYPE_ACKNOWLEDGE:
                     if(event.info.acknowledge.event_number == current_ring_event) {
                         peers_set_acknowledged(event.info.acknowledge.node_id);
                         peers_count_acknowledgements(&expected_acks, &found_acks);
+                        setUserLed(STATUS_LED_RX);
                         ESP_LOGI(TAG, "ACK event: %d ringers of %d acknowledged",
                             found_acks, expected_acks);
                     }
@@ -88,7 +108,11 @@ void main_loop_task(void *pvParameter) {
                     comms_send_ring(current_ring_event, my_ring_index); 
                 } else {
                     current_ring_event = 0;
+                    polling_needed = true;
+                    setUserLed(has_meaningful_connection() ? STATUS_LED_READY : STATUS_LED_OFF);
                 }
+            } else {
+                setUserLed(has_meaningful_connection() ? STATUS_LED_READY : STATUS_LED_OFF);
             }
         }
     }

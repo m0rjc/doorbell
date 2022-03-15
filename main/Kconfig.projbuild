@@ -1,4 +1,4 @@
-menu "RJC App Configuration"
+menu "Doorbell App Configuration"
     config GPIO_BUTTON_NUM
         int "Doorbell Button GPIO"
         default 14
@@ -31,10 +31,22 @@ menu "RJC App Configuration"
         
     config GPIO_RINGER_NUM
         int "Ringer GPIO"
-        default 12
+        default 27
         help
             GPIO number for the ringer
 
+    config GPIO_STATUS_LED_READY_PIN
+        int "status READY LED Red Pin"
+        default 13
+        help
+            GPIO for READY - A button has a bell or a bell has a button
+
+    config GPIO_STATUS_LED_RX_PIN
+        int "status RX Pin"
+        default 12
+        help
+            GPIO for RX - Receiving a remote button or acknowledge packet
+        
     config SETUP_AP_SSID
         string "Setup AP Name"
         default "ESP32 Doorbell"

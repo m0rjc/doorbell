@@ -1,4 +1,4 @@
-#include <stdint.h>>
+#include <stdint.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -29,7 +29,7 @@ static void ringer_task(void *pvParameters) {
         uint32_t patternIndex;
         xTaskNotifyWaitIndexed(TASK_NOTIFY_INDEX, 0, 0, &patternIndex, portMAX_DELAY);
         patternIndex = patternIndex % RINGER_NUM_PATTERNS;
-        uint8_t *pTime = PATTERNS[patternIndex];
+        const uint8_t *pTime = PATTERNS[patternIndex];
         while(*pTime != 0) {
             gpio_set_level(CONFIG_GPIO_RINGER_NUM, 1);
             vTaskDelay(pdMS_TO_TICKS(((uint32_t)*pTime) * 100));
