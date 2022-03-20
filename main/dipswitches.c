@@ -9,16 +9,17 @@
 #include "common.h"
 #include "dipswitches.h"
 
-#define GPIO_SEL_DIP1 GPIO_SEL_N(CONFIG_GPIO_DIP1_NUM)
-#define GPIO_SEL_DIP2 GPIO_SEL_N(CONFIG_GPIO_DIP2_NUM)
-#define GPIO_SEL_DIP3 GPIO_SEL_N(CONFIG_GPIO_DIP3_NUM)
-#define GPIO_SEL_DIP4 GPIO_SEL_N(CONFIG_GPIO_DIP4_NUM)
+#define GPIO_SEL_CONFIG GPIO_SEL_N(CONFIG_GPIO_CONFIG_NUM)
 
 uint8_t dip_switches;
 
 void dip_switchs_init() {
+    // This used to be a bank of dip switches to set peripherals and config.
+    // The thought was that the hardware would describe itself, but in the end
+    // the extra soldering meant I moved to using software instead. The exception
+    // is putting it into config mode which is a pushbutton on the finished project.
     gpio_config_t ioConfig = {
-        .pin_bit_mask = GPIO_SEL_DIP1 | GPIO_SEL_DIP2 | GPIO_SEL_DIP3 | GPIO_SEL_DIP4,
+        .pin_bit_mask = GPIO_SEL_CONFIG,
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -30,13 +31,13 @@ void dip_switchs_init() {
     vTaskDelay(pdMS_TO_TICKS(100));
 
     dip_switches = 
-        gpio_get_level(CONFIG_GPIO_DIP1_NUM) 
-      | gpio_get_level(CONFIG_GPIO_DIP2_NUM) << 1 
-      | gpio_get_level(CONFIG_GPIO_DIP3_NUM) << 2 
-      | gpio_get_level(CONFIG_GPIO_DIP4_NUM) << 3; 
+        gpio_get_level(CONFIG_GPIO_CONFIG_NUM) << 2; 
     
-    // We're using pull down when on, so invert the four bits.
-    dip_switches ^= 0x0F;
+    // We're using pull down when on, so invert the three bits.
+    // We'll report the bottom two bits true too so the system
+    // works with bell and button until the move to doing this
+    // in software is complete.
+    dip_switches ^= 0x07;
     
     ESP_LOGI("dipswitches.c", "Read values %x", (int) dip_switches);
 }

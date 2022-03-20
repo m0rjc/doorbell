@@ -1,52 +1,52 @@
 menu "Doorbell App Configuration"
     config GPIO_BUTTON_NUM
         int "Doorbell Button GPIO"
-        default 14
+        default 19
         help
             GPIO number for the doorbell button. Assumes weak pullup, pull low when button pressed.
-
-    config GPIO_DIP1_NUM
-        int "DIP Switch 1 (Ringer) GPIO"
-        default 16
-        help
-            GPIO number for DIP SWITCH 1, which indicates ringer connected. Must support weak pullup. LOW=ON
-
-    config GPIO_DIP2_NUM
-        int "DIP Switch 2 (Button) GPIO"
-        default 17
-        help
-            GPIO number for DIP SWITCH 2, which indicates button connected. Must support weak pullup. LOW=ON
             
-    config GPIO_DIP3_NUM
+    config GPIO_CONFIG_NUM
         int "DIP Switch 3 (Config) GPIO"
         default 18
         help
             GPIO number for DIP SWITCH 3, which indicates config mode. Must support weak pullup. LOW=ON
-
-    config GPIO_DIP4_NUM
-        int "DIP Switch 4 (Unused) GPIO"
-        default 19
-        help
-            GPIO number for DIP SWITCH 4, Currenly unused but may become button polarity or run mode.
         
     config GPIO_RINGER_NUM
         int "Ringer GPIO"
-        default 27
+        default 13
         help
             GPIO number for the ringer
 
-    config GPIO_STATUS_LED_READY_PIN
+    config GPIO_LED_WIFI_NUM
+        int "status WIFI LED Pin"
+        default 2
+        help
+            Pin to use to indicate connection to WiFi or other network infrastructure
+
+    config GPIO_LED_READY_NUM
         int "status READY LED Red Pin"
-        default 13
+        default 12
         help
             GPIO for READY - A button has a bell or a bell has a button
 
-    config GPIO_STATUS_LED_RX_PIN
-        int "status RX Pin"
-        default 12
+    config GPIO_LED_CONFIG_NUM
+        int "status CONFIG LED Red Pin"
+        default 14
         help
-            GPIO for RX - Receiving a remote button or acknowledge packet
+            GPIO for CONFIG - The system is in config mode
         
+    config GPIO_LED_RX_NUM
+        int "status RX Pin"
+        default 26
+        help
+            GPIO for RX - Receiving a remote button, heartbeat or acknowledge packet
+
+    config GPIO_LED_TX_NUM
+        int "status TX Pin"
+        default 27
+        help
+            GPIO for TX - Sending a remote button, heartbeat or acknowledge packet
+                    
     config SETUP_AP_SSID
         string "Setup AP Name"
         default "ESP32 Doorbell"

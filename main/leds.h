@@ -1,13 +1,12 @@
 #pragma once
 
-typedef enum  {
-    STATUS_LED_OFF = 0,
-    STATUS_LED_READY = 1,
-    STATUS_LED_RX = 2,
-    STATUS_LED_READY_RX = 3
-} status_led_state_t;
+#define LED_STATUS_CONFIG 1
+#define LED_STATUS_READY 2
+#define LED_STATUS_WIFI 4
+#define LED_RX 8
+#define LED_TX 16
 
-void initBlueLed();
-void setBlueLed(uint32_t state);
+void led_init();
 
-void setUserLed(status_led_state_t state);
+void led_set(uint8_t leds, int state);
+void led_blink(uint8_t leds);

@@ -19,8 +19,9 @@
 #include "mainQueue.h"
 #include "comms.h"
 #include "peers.h"
+#include "leds.h"
 
-#define HEARTBEAT_INTERVAL_MS 2000
+#define HEARTBEAT_INTERVAL_MS 2500
 #define HEARTBEAT_BURST_COUNT 2
 #define RING_BURST_COUNT 2
 #define ACK_BURST_COUNT 2
@@ -65,6 +66,7 @@ static void comms_send_packet(packet_t *packet) {
     memcpy(packet->magic, PACKET_MAGIC_NUMBER, sizeof(PACKET_MAGIC_NUMBER));
     packet->crc = esp_crc16_le(UINT16_MAX, (uint8_t const *)packet, sizeof(packet_t));
     comms_send_callback(packet, sizeof(packet_t));
+    led_blink(LED_TX);
 }
 
 static void comms_send_heartbeat() {
@@ -212,5 +214,6 @@ void comms_on_packet(void *buffer, int length) {
             default:
                 ESP_LOGW(TAG, "comms_on_packet: Unexpected packet type %d", packet->id);
         }
+        led_blink(LED_RX);
     }
 }
