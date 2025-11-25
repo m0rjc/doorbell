@@ -151,6 +151,11 @@ static void onHeartbeat(packet_type_heartbeat_t *heartbeat) {
 }
 
 static void onRingPacket(packet_type_ring_event_t *packetinfo) {
+    // Ignore packets from ourselves to prevent double-ringing
+    if(memcmp(packetinfo->node_id, s_my_node_id, NODE_ID_LEN) == 0) {
+        return;
+    }
+
     ring_event_number_t event_number = packetinfo->event_number;
     int found = 0;
     for(int i = 0; i < REPLAY_BUFFER_LENGTH; i++) {
