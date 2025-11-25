@@ -2,6 +2,8 @@
 
 _And what is a home made microcontroller project without blinking LEDs?_
 
+![An assembled receiver](built_module.jpg)
+
 ## Purpose
 
 We need to ring the doorbell in the outbuilding when the button in the main house is pressed. We're a WiFi noisy
